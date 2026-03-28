@@ -18,6 +18,29 @@ app.add_middleware(
 GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 client = Groq(api_key=GROQ_API_KEY)
 
+def format_ai_output(ai):
+    summary = ai.get("summary", "")
+    regime = ai.get("regime_advice", "")
+    actions = ai.get("top_actions", [])
+    investments = ai.get("investment_suggestions", [])
+    insight = ai.get("key_insight", "")
+
+    formatted = {
+        "summary": summary,
+        "regime_advice": regime,
+        "top_actions": [
+            f"{a['action']} — {a['impact']} ({a['priority']})"
+            for a in actions
+        ],
+        "investment_suggestions": [
+            f"{i['instrument']} ({i['section']}) → {i['max_benefit']} benefit"
+            for i in investments
+        ],
+        "key_insight": insight
+    }
+
+    return formatted
+
 # ── Tax slabs FY 2024-25 ────────────────────────────────────────────────────
 
 OLD_SLABS = [
@@ -248,42 +271,52 @@ def get_groq_recommendations(fields: dict, gaps: list, regime: dict) -> str:
     total_missed_deductions = sum(g["missed"] for g in missed_sections)
     tax_saved_if_claimed = round(total_missed_deductions * 0.30 * 1.04, 2)  # assuming 30% bracket + cess
 
-    prompt = f"""You are an expert Indian tax advisor. Analyze this Form 16 data and give sharp, personalized advice.
+    prompt = f"""
+You are a senior Indian tax consultant analyzing a salaried employee's Form 16.
 
-TAXPAYER DATA:
-- Name: {fields.get('employee_name')}
-- Gross Salary: ₹{fields.get('gross_salary', 0):,.0f}
-- Assessment Year: {fields.get('assessment_year')}
-- Current Regime: {fields.get('new_regime_opted', 'No')} (new regime)
+Use ONLY the numbers provided below. Do NOT invent values.
 
-REGIME COMPARISON:
-- Old Regime Tax: ₹{regime['old_regime']['tax_payable']:,.0f}
-- New Regime Tax: ₹{regime['new_regime']['tax_payable']:,.0f}
-- Better Regime: {better.upper()} (saves ₹{savings:,.0f})
+TAXPAYER PROFILE
+Name: {fields.get('employee_name')}
+Gross Salary: ₹{fields.get('gross_salary', 0):,.0f}
+Assessment Year: {fields.get('assessment_year')}
 
-MISSED DEDUCTIONS:
-{chr(10).join([f"- {g['name']}: Claimed ₹{g['claimed']:,.0f} / Limit ₹{g['limit']:,.0f} → Missed ₹{g['missed']:,.0f}" for g in missed_sections])}
+CURRENT TAX ANALYSIS
+Old Regime Tax: ₹{regime['old_regime']['tax_payable']:,.0f}
+New Regime Tax: ₹{regime['new_regime']['tax_payable']:,.0f}
+Better Regime: {better.upper()} (saves ₹{savings:,.0f})
 
-Total unclaimed deductions: ₹{total_missed_deductions:,.0f}
-Estimated additional tax savings if claimed: ₹{tax_saved_if_claimed:,.0f}
+DEDUCTIONS ANALYSIS
+{chr(10).join([f"{g['name']} → Claimed ₹{g['claimed']:,.0f} / Limit ₹{g['limit']:,.0f} / Missed ₹{g['missed']:,.0f}" for g in missed_sections])}
 
-Give your response as a JSON object with exactly these keys:
+Total Unclaimed Deductions: ₹{total_missed_deductions:,.0f}
+Potential Tax Saved If Claimed: ₹{tax_saved_if_claimed:,.0f}
+
+INSTRUCTIONS
+
+1. Identify the biggest tax saving opportunities.
+2. Do NOT recommend deductions already fully utilized.
+3. Prioritize actions with the highest tax impact.
+4. Provide clear reasoning like a professional tax advisor.
+
+Return STRICT JSON with this structure:
+
 {{
-  "summary": "2-3 sentence sharp summary of their tax situation",
-  "regime_advice": "Clear recommendation on which regime to pick and why, specific to their numbers",
-  "top_actions": [
-    {{"action": "specific action to take", "impact": "₹X saved", "priority": "HIGH/MEDIUM/LOW"}},
-    {{"action": "...", "impact": "...", "priority": "..."}},
-    {{"action": "...", "impact": "...", "priority": "..."}}
-  ],
-  "investment_suggestions": [
-    {{"instrument": "instrument name", "section": "80C/80D etc", "max_benefit": "₹X", "why": "one line reason"}},
-    {{"instrument": "...", "section": "...", "max_benefit": "...", "why": "..."}}
-  ],
-  "key_insight": "One surprising or non-obvious insight specific to their situation"
+"summary": "2-3 sentence explanation of the taxpayer's current tax position",
+"regime_advice": "Explain which regime is better and why",
+"top_actions": [
+  {{"action":"specific action", "impact":"₹X saved", "priority":"HIGH"}},
+  {{"action":"...", "impact":"...", "priority":"MEDIUM"}},
+  {{"action":"...", "impact":"...", "priority":"LOW"}}
+],
+"investment_suggestions":[
+  {{"instrument":"PPF/ELSS/NPS/etc", "section":"80C/80D/etc", "max_benefit":"₹X", "why":"short reason"}}
+],
+"key_insight":"one useful insight about their tax situation"
 }}
 
-Be specific with rupee amounts. No generic advice. Respond with JSON only."""
+Respond ONLY with JSON.
+"""
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
