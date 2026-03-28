@@ -17,7 +17,7 @@ export default function App() {
     try {
       const form = new FormData()
       form.append('file', file)
-      const res  = await fetch(`${API}/api/analyze`, { method: 'POST', body: form })
+      const res  = await fetch(`${API_URL}/api/analyze`, { method: 'POST', body: form })
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
       setResult(data)
@@ -32,7 +32,7 @@ export default function App() {
     setScreen('loading')
     setError(null)
     try {
-      const res  = await fetch(`${API}/api/manual`, {
+      const res  = await fetch(`${API_URL}/api/manual`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(formData),
