@@ -4,7 +4,7 @@ import ResultsPage  from './pages/ResultsPage'
 import ManualPage   from './pages/ManualPage'
 import './App.css'
 
-const API = 'http://localhost:8000'
+const API_URL = "https://tax-wizard.onrender.com"
 
 export default function App() {
   const [screen, setScreen]   = useState('upload') // upload | manual | loading | results
